@@ -20,7 +20,6 @@ import KituraNet
 import KituraContracts
 
 // Codable router
-
 extension Router {
 
     // MARK: Codable Routing
@@ -207,50 +206,107 @@ extension Router {
         patchSafely(route, handler: handler)
     }
 
-     // POST
+    internal static func isContentTypeJSON(_ request: RouterRequest) -> Bool {
+        guard let contentType = request.headers["Content-Type"] else {
+            return false
+        }
+        return contentType.hasPrefix("application/json")
+    }
+
+    internal static func httpStatusCode(from error: RequestError) -> HTTPStatusCode {
+        return HTTPStatusCode(rawValue: error.rawValue) ?? HTTPStatusCode.unknown
+    }
+
+    internal static func constructResultHandler(response: RouterResponse, completion: @escaping () -> Void) -> ResultClosure {
+        return { error in
+            if let error = error {
+                response.status(httpStatusCode(from: error))
+            } else {
+                response.status(.noContent)
+            }
+            completion()
+        }
+    }
+
+    internal static func constructOutResultHandler<OutputType: Codable>(successStatus: HTTPStatusCode = .OK, response: RouterResponse, completion: @escaping () -> Void) -> CodableResultClosure<OutputType> {
+        return { codableOutput, error in
+            if let error = error {
+                response.status(httpStatusCode(from: error))
+            } else {
+                do {
+                    let json = try JSONEncoder().encode(codableOutput)
+                    response.send(data: json)
+                    response.status(successStatus)
+                } catch {
+                    Log.error("Could not encode result: \(error)")
+                    response.status(.internalServerError)
+                }
+            }
+            completion()
+        }
+    }
+
+    internal static func constructIdentOutResultHandler<IdType: Identifier, OutputType: Codable>(successStatus: HTTPStatusCode = .OK, response: RouterResponse, completion: @escaping () -> Void) -> IdentifierCodableResultClosure<IdType, OutputType> {
+        return { id, codableOutput, error in
+            if let error = error {
+                response.status(Router.httpStatusCode(from: error))
+            } else if let id = id {
+                response.headers["Location"] = String(id.value)
+                do {
+                    let json = try JSONEncoder().encode(codableOutput)
+                    response.send(data: json)
+                    response.status(successStatus)
+                } catch {
+                    Log.error("Could not encode result: \(error)")
+                    response.status(.internalServerError)
+                }
+            } else {
+                Log.error("No id (unique identifier) value provided.")
+                response.status(.internalServerError)
+            }
+            completion()
+        }
+    }
+
+    internal static func readCodableOrSetResponseStatus<InputType: Codable>(_ inputCodableType: InputType.Type, from request: RouterRequest, response: RouterResponse) -> InputType? {
+        guard Router.isContentTypeJSON(request) else {
+            response.status(.unsupportedMediaType)
+            return nil
+        }
+        guard !request.hasBodyParserBeenUsed else {
+            Log.error("No data in request. Codable routes do not allow the use of BodyParser.")
+            response.status(.internalServerError)
+            return nil
+        }
+        do {
+            return try request.read(as: InputType.self)
+        } catch {
+            Log.error("Failed to read Codable input from request: \(error)")
+            response.status(.unprocessableEntity)
+            return nil
+        }
+    }
+
+    internal static func parseIdOrSetResponseStatus<IdType: Identifier>(_ idType: IdType.Type, from request: RouterRequest, response: RouterResponse) -> IdType? {
+        guard let idParameter = request.parameters["id"],
+              let id = try? IdType(value: idParameter)
+        else {
+            // TODO: Should this be .notFound?
+            response.status(.unprocessableEntity)
+            return nil
+        }
+        return id
+    }
+
+    // POST
     fileprivate func postSafely<I: Codable, O: Codable>(_ route: String, handler: @escaping CodableClosure<I, O>) {
         post(route) { request, response, next in
             Log.verbose("Received POST type-safe request")
-            guard self.isContentTypeJson(request) else {
-                response.status(.unsupportedMediaType)
+            guard let codableInput = Router.readCodableOrSetResponseStatus(I.self, from: request, response: response) else {
                 next()
                 return
             }
-            guard !request.hasBodyParserBeenUsed else {
-                Log.error("No data in request. Codable routes do not allow the use of a BodyParser.")
-                response.status(.internalServerError)
-                return
-            }
-            do {
-                // Process incoming data from client
-                let param = try request.read(as: I.self)
-
-                // Define handler to process result from application
-                let resultHandler: CodableResultClosure<O> = { result, error in
-                    do {
-                        if let err = error {
-                            let status = self.httpStatusCode(from: err)
-                            response.status(status)
-                        } else {
-                            let encoded = try JSONEncoder().encode(result)
-                            response.status(.created)
-                            response.send(data: encoded)
-                        }
-                    } catch {
-                        // Http 500 error
-                        response.status(.internalServerError)
-                    }
-                    next()
-                }
-                // Invoke application handler
-                handler(param, resultHandler)
-            } catch {
-                // Http 400 error
-                //response.status(.badRequest)
-                // Http 422 error
-                response.status(.unprocessableEntity)
-                next()
-            }
+            handler(codableInput, Router.constructOutResultHandler(successStatus: .created, response: response, completion: next))
         }
     }
 
@@ -258,99 +314,28 @@ extension Router {
     fileprivate func postSafelyWithId<I: Codable, Id: Identifier, O: Codable>(_ route: String, handler: @escaping CodableIdentifierClosure<I, Id, O>) {
         post(route) { request, response, next in
             Log.verbose("Received POST type-safe request")
-            guard self.isContentTypeJson(request) else {
-                response.status(.unsupportedMediaType)
+            guard let codableInput = Router.readCodableOrSetResponseStatus(I.self, from: request, response: response) else {
                 next()
                 return
             }
-            guard !request.hasBodyParserBeenUsed else {
-                Log.error("No data in request. Codable routes do not allow the use of a BodyParser.")
-                response.status(.internalServerError)
-                return
-            }
-            do {
-                // Process incoming data from client
-                let param = try request.read(as: I.self)
-
-                // Define handler to process result from application
-                let resultHandler: IdentifierCodableResultClosure<Id, O> = { id, result, error in
-                    do {
-                        if let err = error {
-                            let status = self.httpStatusCode(from: err)
-                            response.status(status)
-                        } else {
-                            guard let id = id else {
-                                Log.error("No id (unique identifier) value provided.")
-                                response.status(.internalServerError)
-                                next()
-                                return
-                            }
-                            let encoded = try JSONEncoder().encode(result)
-                            response.status(.created)
-                            response.headers["Location"] = String(id.value)
-                            response.send(data: encoded)
-                        }
-                    } catch {
-                        // Http 500 error
-                        response.status(.internalServerError)
-                    }
-                    next()
-                }
-                // Invoke application handler
-                handler(param, resultHandler)
-            } catch {
-                // Http 422 error
-                response.status(.unprocessableEntity)
-                next()
-            }
+            handler(codableInput, Router.constructIdentOutResultHandler(successStatus: .created, response: response, completion: next))
         }
     }
 
-     // PUT with Identifier
+    // PUT with Identifier
     fileprivate func putSafely<Id: Identifier, I: Codable, O: Codable>(_ route: String, handler: @escaping IdentifierCodableClosure<Id, I, O>) {
         if parameterIsPresent(in: route) {
             return
         }
         put(join(path: route, with: ":id")) { request, response, next in
             Log.verbose("Received PUT type-safe request")
-             guard self.isContentTypeJson(request) else {
-                response.status(.unsupportedMediaType)
+            guard let identifier = Router.parseIdOrSetResponseStatus(Id.self, from: request, response: response),
+                  let codableInput = Router.readCodableOrSetResponseStatus(I.self, from: request, response: response)
+            else {
                 next()
                 return
             }
-            guard !request.hasBodyParserBeenUsed else {
-                Log.error("No data in request. Codable routes do not allow the use of a BodyParser.")
-                response.status(.internalServerError)
-                return
-            }
-            do {
-                // Process incoming data from client
-                let id = request.parameters["id"] ?? ""
-                let identifier = try Id(value: id)
-                let param = try request.read(as: I.self)
-
-                let resultHandler: CodableResultClosure<O> = { result, error in
-                    do {
-                        if let err = error {
-                            let status = self.httpStatusCode(from: err)
-                            response.status(status)
-                        } else {
-                            let encoded = try JSONEncoder().encode(result)
-                            response.status(.OK)
-                            response.send(data: encoded)
-                        }
-                    } catch {
-                        // Http 500 error
-                        response.status(.internalServerError)
-                    }
-                    next()
-                }
-                // Invoke application handler
-                handler(identifier, param, resultHandler)
-            } catch {
-                response.status(.unprocessableEntity)
-                next()
-            }
+            handler(identifier, codableInput, Router.constructOutResultHandler(response: response, completion: next))
         }
     }
 
@@ -361,46 +346,13 @@ extension Router {
         }
         patch(join(path: route, with: ":id")) { request, response, next in
             Log.verbose("Received PATCH type-safe request")
-            guard self.isContentTypeJson(request) else {
-                response.status(.unsupportedMediaType)
+            guard let identifier = Router.parseIdOrSetResponseStatus(Id.self, from: request, response: response),
+                  let codableInput = Router.readCodableOrSetResponseStatus(I.self, from: request, response: response)
+            else {
                 next()
                 return
             }
-            guard !request.hasBodyParserBeenUsed else {
-                Log.error("No data in request. Codable routes do not allow the use of a BodyParser.")
-                response.status(.internalServerError)
-                return
-            }
-            do {
-                // Process incoming data from client
-                let id = request.parameters["id"] ?? ""
-                let identifier = try Id(value: id)
-                let param = try request.read(as: I.self)
-
-                // Define handler to process result from application
-                let resultHandler: CodableResultClosure<O> = { result, error in
-                    do {
-                        if let err = error {
-                            let status = self.httpStatusCode(from: err)
-                            response.status(status)
-                        } else {
-                            let encoded = try JSONEncoder().encode(result)
-                            response.status(.OK)
-                            response.send(data: encoded)
-                        }
-                    } catch {
-                        // Http 500 error
-                        response.status(.internalServerError)
-                    }
-                    next()
-                }
-                // Invoke application handler
-                handler(identifier, param, resultHandler)
-            } catch {
-                // Http 422 error
-                response.status(.unprocessableEntity)
-                next()
-            }
+            handler(identifier, codableInput, Router.constructOutResultHandler(response: response, completion: next))
         }
     }
 
@@ -408,24 +360,7 @@ extension Router {
     fileprivate func getSafely<O: Codable>(_ route: String, handler: @escaping SimpleCodableClosure<O>) {
         get(route) { request, response, next in
             Log.verbose("Received GET (single no-identifier) type-safe request")
-            // Define result handler
-            let resultHandler: CodableResultClosure<O> = { result, error in
-                do {
-                    if let err = error {
-                        let status = self.httpStatusCode(from: err)
-                        response.status(status)
-                    } else {
-                        let encoded = try JSONEncoder().encode(result)
-                        response.status(.OK)
-                        response.send(data: encoded)
-                    }
-                } catch {
-                    // Http 500 error
-                    response.status(.internalServerError)
-                }
-                next()
-            }
-            handler(resultHandler)
+            handler(Router.constructOutResultHandler(response: response, completion: next))
         }
     }
 
@@ -433,24 +368,7 @@ extension Router {
     fileprivate func getSafely<O: Codable>(_ route: String, handler: @escaping CodableArrayClosure<O>) {
         get(route) { request, response, next in
             Log.verbose("Received GET (plural) type-safe request")
-            // Define result handler
-            let resultHandler: CodableArrayResultClosure<O> = { result, error in
-                do {
-                    if let err = error {
-                        let status = self.httpStatusCode(from: err)
-                        response.status(status)
-                    } else {
-                        let encoded = try JSONEncoder().encode(result)
-                        response.status(.OK)
-                        response.send(data: encoded)
-                    }
-                } catch {
-                    // Http 500 error
-                    response.status(.internalServerError)
-                }
-                next()
-            }
-            handler(resultHandler)
+            handler(Router.constructOutResultHandler(response: response, completion: next))
         }
     }
 
@@ -461,80 +379,34 @@ extension Router {
         }
         get(join(path: route, with: ":id")) { request, response, next in
             Log.verbose("Received GET (singular with identifier) type-safe request")
-            do {
-                // Define result handler
-                let resultHandler: CodableResultClosure<O> = { result, error in
-                    do {
-                        if let err = error {
-                            let status = self.httpStatusCode(from: err)
-                            response.status(status)
-                        } else {
-                            let encoded = try JSONEncoder().encode(result)
-                            response.status(.OK)
-                            response.send(data: encoded)
-                        }
-                    } catch {
-                         // Http 500 error
-                        response.status(.internalServerError)
-                    }
-                    next()
-                }
-                // Process incoming data from client
-                let id = request.parameters["id"] ?? ""
-                let identifier = try Id(value: id)
-                handler(identifier, resultHandler)
-            } catch {
-                // Http 422 error
-                response.status(.unprocessableEntity)
+            guard let identifier = Router.parseIdOrSetResponseStatus(Id.self, from: request, response: response) else {
                 next()
+                return
             }
+            handler(identifier, Router.constructOutResultHandler(response: response, completion: next))
         }
     }
 
-     // DELETE
+    // DELETE
     fileprivate func deleteSafely(_ route: String, handler: @escaping NonCodableClosure) {
         delete(route) { request, response, next in
             Log.verbose("Received DELETE (plural) type-safe request")
-            // Define result handler
-            let resultHandler: ResultClosure = { error in
-                if let err = error {
-                    let status = self.httpStatusCode(from: err)
-                    response.status(status)
-                } else {
-                    response.status(.noContent)
-                }
-                next()
-            }
-            handler(resultHandler)
+            handler(Router.constructResultHandler(response: response, completion: next))
         }
     }
 
-     // DELETE single element
+    // DELETE single element
     fileprivate func deleteSafely<Id: Identifier>(_ route: String, handler: @escaping IdentifierNonCodableClosure<Id>) {
         if parameterIsPresent(in: route) {
             return
         }
         delete(join(path: route, with: ":id")) { request, response, next in
             Log.verbose("Received DELETE (singular) type-safe request")
-            let resultHandler: ResultClosure = { error in
-                if let err = error {
-                    let status = self.httpStatusCode(from: err)
-                    response.status(status)
-                } else {
-                    response.status(.noContent)
-                }
+            guard let identifier = Router.parseIdOrSetResponseStatus(Id.self, from: request, response: response) else {
                 next()
+                return
             }
-            // Process incoming data from client
-            do {
-                let id = request.parameters["id"] ?? ""
-                let identifier = try Id(value: id)
-                handler(identifier, resultHandler)
-            } catch {
-                 // Http 422 error
-                response.status(.unprocessableEntity)
-                next()
-            }
+            handler(identifier, Router.constructResultHandler(response: response, completion: next))
         }
     }
 
@@ -546,18 +418,6 @@ extension Router {
             return true
         }
         return false
-    }
-
-    private func isContentTypeJson(_ request: RouterRequest) -> Bool {
-        guard let contentType = request.headers["Content-Type"] else {
-            return false
-        }
-        return (contentType.hasPrefix("application/json"))
-    }
-
-    private func httpStatusCode(from error: RequestError) -> HTTPStatusCode {
-        let status: HTTPStatusCode = HTTPStatusCode(rawValue: error.rawValue) ?? .unknown
-        return status
     }
 
     internal func join(path base: String, with component: String) -> String {
