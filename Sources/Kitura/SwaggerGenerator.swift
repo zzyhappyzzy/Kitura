@@ -46,8 +46,6 @@ struct SwaggerResponseType {
     var statusCode: HTTPStatusCode?
 }
 
-typealias SwaggerRequestError = String
-
 // Container for Swagger document information.
 struct SwaggerInfo: Encodable {
     var version: String
@@ -1163,7 +1161,6 @@ extension Router {
     public func registerGetRoute<O: Codable>(route: String, outputType: O.Type, outputIsArray: Bool = false) {
         var responseTypes = [SwaggerResponseType]()
         responseTypes.append(SwaggerResponseType(optional: true, array: outputIsArray, type: O.self, statusCode: .OK))
-        responseTypes.append(SwaggerResponseType(optional: true, array: false, type: SwaggerRequestError.self, statusCode: nil))
         registerRoute(route: route, method: "get", outputType: O.self, responseTypes: responseTypes)
     }
 
@@ -1175,7 +1172,6 @@ extension Router {
     public func registerGetRoute<Id: Identifier, O: Codable>(route: String, id: Id.Type, outputType: O.Type, outputIsArray: Bool = false) {
         var responseTypes = [SwaggerResponseType]()
         responseTypes.append(SwaggerResponseType(optional: true, array: outputIsArray, type: O.self, statusCode: .OK))
-        responseTypes.append(SwaggerResponseType(optional: true, array: false, type: SwaggerRequestError.self, statusCode: nil))
         registerRoute(route: route, method: "get", id: Id.self, outputType: O.self, responseTypes: responseTypes)
     }
 
@@ -1189,7 +1185,6 @@ extension Router {
         var responseTypes = [SwaggerResponseType]()
         responseTypes.append(SwaggerResponseType(optional: true, array: outputIsArray, type: O.self, statusCode: .OK))
         responseTypes.append(SwaggerResponseType(optional: true, array: false, type: nil, statusCode: .badRequest))
-        responseTypes.append(SwaggerResponseType(optional: true, array: false, type: SwaggerRequestError.self, statusCode: nil))
         registerRoute(route: route, method: "get", queryType: Q.self, allOptQParams: optionalQParam, outputType: O.self, responseTypes: responseTypes)
     }
 
@@ -1199,7 +1194,6 @@ extension Router {
     public func registerDeleteRoute(route: String) {
         var responseTypes = [SwaggerResponseType]()
         responseTypes.append(SwaggerResponseType(optional: true, array: false, type: nil, statusCode: .OK))
-        responseTypes.append(SwaggerResponseType(optional: true, array: false, type: SwaggerRequestError.self, statusCode: nil))
         registerDelete(route: route, responseTypes: responseTypes)
     }
 
@@ -1212,7 +1206,6 @@ extension Router {
         var responseTypes = [SwaggerResponseType]()
         responseTypes.append(SwaggerResponseType(optional: true, array: false, type: nil, statusCode: .OK))
         responseTypes.append(SwaggerResponseType(optional: true, array: false, type: nil, statusCode: .badRequest))
-        responseTypes.append(SwaggerResponseType(optional: true, array: false, type: SwaggerRequestError.self, statusCode: nil))
         registerDelete(route: route, queryType: Q.self, allOptQParams: optionalQParam, responseTypes: responseTypes)
     }
 
@@ -1223,7 +1216,6 @@ extension Router {
     public func registerDeleteRoute<Id: Identifier>(route: String, id: Id.Type ) {
         var responseTypes = [SwaggerResponseType]()
         responseTypes.append(SwaggerResponseType(optional: true, array: false, type: nil, statusCode: .OK))
-        responseTypes.append(SwaggerResponseType(optional: true, array: false, type: SwaggerRequestError.self, statusCode: nil))
         registerDelete(route: route, id: Id.self, responseTypes: responseTypes)
     }
 
