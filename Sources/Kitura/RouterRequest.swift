@@ -44,7 +44,7 @@ public class RouterRequest {
     let serverRequest: ServerRequest
     
     /// The Data decoder generator for the request content-type
-    let decoder: BodyDecoder?
+    public let decoder: BodyDecoder?
 
     // MARK: Properties
     

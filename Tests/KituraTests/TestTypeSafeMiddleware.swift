@@ -870,12 +870,12 @@ class TestTypeSafeMiddleware: KituraTest {
         struct SimpleQuery: QueryParams {
             let string: String
         }
-        let jsonEncoder: () -> BodyEncoder = {
+        let jsonEncoder: (Headers) -> BodyEncoder = {_ in
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .secondsSince1970
             return encoder
         }
-        let jsonDecoder: () -> BodyDecoder = {
+        let jsonDecoder: (Headers) -> BodyDecoder = {_ in
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .secondsSince1970
             return decoder
@@ -943,12 +943,12 @@ class TestTypeSafeMiddleware: KituraTest {
         struct SimpleQuery: QueryParams {
             let string: String
         }
-        let jsonEncoder: () -> BodyEncoder = {
+        let jsonEncoder: (Headers) -> BodyEncoder = {_ in
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .secondsSince1970
             return encoder
         }
-        let jsonDecoder: () -> BodyDecoder = {
+        let jsonDecoder: (Headers) -> BodyDecoder = {_ in
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .secondsSince1970
             return decoder

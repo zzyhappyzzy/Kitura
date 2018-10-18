@@ -147,7 +147,7 @@ public class Router {
      router.encoders[.json] = newJSONEncoder
      ```
      */
-    public var encoders: [MediaType: () -> BodyEncoder] = [.json: {return JSONEncoder()}]
+    public var encoders: [MediaType: (Headers) -> BodyEncoder] = [.json: {_ in return JSONEncoder()}]
     
     /**
      if the request's Accept header does not match an encoder,
@@ -178,7 +178,7 @@ public class Router {
      router.decoders[.json] = newJSONDecoder
      ```
      */
-    public var decoders: [MediaType: () -> BodyDecoder] = [.json: {return JSONDecoder()}, .urlEncoded: {return QueryDecoder()}]
+    public var decoders: [MediaType: (Headers) -> BodyDecoder] = [.json: {_ in return JSONDecoder()}, .urlEncoded: {_ in return QueryDecoder()}]
     
     // MARK: Template Engine
 
@@ -549,11 +549,11 @@ extension Router : ServerDelegate {
     /// - Parameter response: The `ServerResponse` object used to send responses to the
     ///                      HTTP request at the [Kitura-net](http://ibm-swift.github.io/Kitura-net/) API level.
     public func handle(request: ServerRequest, response: ServerResponse) {
-        var decoder: (() -> BodyDecoder)?
+        var decoder: ((Headers) -> BodyDecoder)?
         if let contentType = request.headers["Content-Type"]?[0], let mediaType = MediaType(contentTypeHeader: contentType) {
             decoder = decoders[mediaType]
         }
-        let routeReq = RouterRequest(request: request, decoder: decoder?())
+        let routeReq = RouterRequest(request: request, decoder: decoder?(Headers(headers: request.headers)))
         //TODO fix the stack
         var routerStack = Stack<Router>()
         routerStack.push(self)

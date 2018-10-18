@@ -40,12 +40,12 @@ class TestCustomCoders: KituraTest {
     }
     
     func testCustomCoder() {
-        let jsonEncoder: () -> BodyEncoder = {
+        let jsonEncoder: (Headers) -> BodyEncoder = {_ in
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .secondsSince1970
             return encoder
         }
-        let jsonDecoder: () -> BodyDecoder = {
+        let jsonDecoder: (Headers) -> BodyDecoder = {_ in
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .secondsSince1970
             return decoder
@@ -84,12 +84,12 @@ class TestCustomCoders: KituraTest {
     func testRawCustomCoder() {
         // Set up router for this test
         let customRouter = Router()
-        let jsonDecoder: () -> BodyDecoder = {
+        let jsonDecoder: (Headers) -> BodyDecoder = {_ in
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .secondsSince1970
             return decoder
         }
-        let jsonEncoder: () -> BodyEncoder = {
+        let jsonEncoder: (Headers) -> BodyEncoder = {_ in
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .secondsSince1970
             return encoder
@@ -134,7 +134,7 @@ class TestCustomCoders: KituraTest {
     func testCustomQueryEncoder() {
         // Set up router for this test
         let customRouter = Router()
-        customRouter.encoders[.urlEncoded] =  { return QueryEncoder() }
+        customRouter.encoders[.urlEncoded] =  {_ in return QueryEncoder() }
         
         customRouter.get("/rawget") { _, response, next in
             let date = Date(timeIntervalSince1970: 1519206456)
@@ -196,7 +196,7 @@ class TestCustomCoders: KituraTest {
             })
         }
 
-        let jsonEncoder: () -> BodyEncoder = {
+        let jsonEncoder: (Headers) -> BodyEncoder = {_ in
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .secondsSince1970
             return encoder
