@@ -69,5 +69,3 @@ You can find more info on contributing to Kitura in our [contributing guidelines
 ## Community
 
 We love to talk server-side Swift, and Kitura. Join our [Slack](http://swift-at-ibm-slack.mybluemix.net/) to meet the team!
-
-<!-- dummy -->
